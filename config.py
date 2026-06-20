@@ -9,8 +9,9 @@ Script CHOP parses into channels (see scripts/hands_to_chop.py).
 # --- Plugin hookup ----------------------------------------------------------------
 # The plugin's hands output DAT (JSON). Confirmed path from the loaded MediaPipe.tox:
 HANDS_DAT_PATH = '/project1/MediaPipe/hands'
-# Which hand landmark drives the triangle corner: 0 = wrist, 9 ~ palm center.
-LANDMARK_INDEX = 0
+# Each hand's box corner = midpoint of these two landmarks (finger-frame gesture).
+THUMB_INDEX = 4   # thumb tip
+INDEX_INDEX = 8   # index fingertip
 
 # --- Webcam source ----------------------------------------------------------------
 # 'device' -> our own Video Device In TOP (default camera)
@@ -21,12 +22,15 @@ WEBCAM_FLIP_X      = False    # plugin feed is already in landmark space; no ext
 
 # --- Coordinate handling ----------------------------------------------------------
 FLIP_Y     = True    # MediaPipe y is top-down; TD UV is bottom-up -> use (1 - y)
-MIRROR_X   = False   # flip landmark x if the triangle is left/right reversed
-SWAP_HANDS = False   # swap which hand drives which bottom corner
+MIRROR_X   = False   # flip landmark x if the box is left/right reversed
+SWAP_HANDS = False   # cosmetic now (box is the bounding box of both corners)
 
-# --- Triangle apex ----------------------------------------------------------------
-APEX_MODE = 'fixed'      # 'fixed' or 'midpoint' (upward-projected midpoint of hands)
-APEX      = (0.5, 0.95)  # UV; TD UV y=1 is the TOP of the frame, so 0.95 ~ top-center
+# --- Glitch (inside the box) ------------------------------------------------------
+GLITCH_RGB_SHIFT_PX = 6.0    # chromatic split base, pixels
+GLITCH_SCAN_FREQ    = 400.0  # scanline frequency
+GLITCH_SCAN_AMT     = 0.35   # scanline strength 0..1
+GLITCH_FEEDBACK     = 0.85   # trail/echo amount 0..~0.97 (higher = longer trails)
+GLITCH_MOTION_GAIN  = 40.0   # how strongly hand speed drives glitch intensity
 
 # --- Smoothing --------------------------------------------------------------------
 LAG = 0.07               # Lag CHOP time constant in seconds (0.05-0.10)

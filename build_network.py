@@ -111,7 +111,8 @@ def set_vec(g, idx, uname, vx=None, vy=None, ex=None, ey=None):
 cb = make(td.textDAT, 'script_hands_callbacks', -600, -150)
 parser = read_script('hands_to_chop.py')
 parser = parser.replace('__HANDS_DAT_PATH__', C.HANDS_DAT_PATH)
-parser = parser.replace('__LANDMARK_INDEX__', str(C.LANDMARK_INDEX))
+parser = parser.replace('__THUMB_INDEX__', str(C.THUMB_INDEX))
+parser = parser.replace('__INDEX_INDEX__', str(C.INDEX_INDEX))
 cb.text = parser
 
 script_hands = make(td.scriptCHOP, 'script_hands', -600, 0)
@@ -125,6 +126,12 @@ connect(lag, 0, script_hands)
 
 null_hands = make(td.nullCHOP, 'null_hands', -240, 0)
 connect(null_hands, 0, lag)
+
+# Hand-speed -> glitch intensity: derivative of the corner positions.
+slope = make(td.slopeCHOP, 'hand_slope', -420, 150)
+connect(slope, 0, null_hands)
+null_slope = make(td.nullCHOP, 'null_slope', -240, 150)
+connect(null_slope, 0, slope)
 
 
 # --- coordinate expressions for the GLSL uniforms --------------------------------
@@ -140,11 +147,18 @@ def y_expr(name):
     return f"(1-{chan(name)})" if C.FLIP_Y else chan(name)
 
 
-# Optionally swap which hand drives which bottom corner.
+# The rectangle is the bounding box of the two corners, so left/right is cosmetic.
 L = ('hand_right_x', 'hand_right_y') if C.SWAP_HANDS else ('hand_left_x', 'hand_left_y')
 R = ('hand_left_x', 'hand_left_y') if C.SWAP_HANDS else ('hand_right_x', 'hand_right_y')
 left_x, left_y = x_expr(L[0]), y_expr(L[1])
 right_x, right_y = x_expr(R[0]), y_expr(R[1])
+
+# Hand-motion magnitude (from the slope CHOP) -> 0..1, scaled by gain.
+_sl = "op('null_slope')"
+motion_expr = (
+    "min(1.0, (({s}['hand_left_x']**2+{s}['hand_left_y']**2+"
+    "{s}['hand_right_x']**2+{s}['hand_right_y']**2)**0.5)*{g})"
+).format(s=_sl, g=C.GLITCH_MOTION_GAIN)
 
 
 # --- webcam source ----------------------------------------------------------------
@@ -181,33 +195,41 @@ setp(noise, resolutionw=C.RESOLUTION[0], resolutionh=C.RESOLUTION[1],
      mono=1, period=20.0)
 
 
-# --- triangle compositor ----------------------------------------------------------
-comp_glsl = make_glsl('triangle_composite', 'triangle_composite.frag', 160, -300)
+# --- glitch stage (with feedback trails) ------------------------------------------
+glitch = make_glsl('glitch', 'glitch.frag', 120, -300)
+set_vec(glitch, 0, 'uShiftPx', vx=C.GLITCH_RGB_SHIFT_PX, vy=0.0)
+set_vec(glitch, 1, 'uScan', vx=C.GLITCH_SCAN_FREQ, vy=C.GLITCH_SCAN_AMT)
+set_vec(glitch, 2, 'uFeedback', vx=C.GLITCH_FEEDBACK, vy=0.0)
+set_vec(glitch, 3, 'uMotion', ex=motion_expr)
+set_vec(glitch, 4, 'uTime', ex='absTime.seconds')
 
-if C.APEX_MODE == 'midpoint':
-    set_vec(comp_glsl, 0, 'uApex',
-            ex=f"(({left_x})+({right_x}))/2", vy=C.APEX[1])
-else:
-    set_vec(comp_glsl, 0, 'uApex', vx=C.APEX[0], vy=C.APEX[1])
-set_vec(comp_glsl, 1, 'uLeft', ex=left_x, ey=left_y)
-set_vec(comp_glsl, 2, 'uRight', ex=right_x, ey=right_y)
-set_vec(comp_glsl, 3, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE)
+glitch_fb = make(td.feedbackTOP, 'glitch_fb', 120, -460)
+setp(glitch_fb, top=glitch.name)        # capture glitch's previous frame
 
-connect(comp_glsl, 0, webcam)     # raw  -> sTD2DInputs[0]
-connect(comp_glsl, 1, halftone)   # fx   -> sTD2DInputs[1]
-connect(comp_glsl, 2, noise)      # grain-> sTD2DInputs[2]
+connect(glitch, 0, halftone)            # content -> sTD2DInputs[0]
+connect(glitch, 1, glitch_fb)           # feedback -> sTD2DInputs[1]
+
+
+# --- rectangle compositor ---------------------------------------------------------
+comp_glsl = make_glsl('rect_composite', 'rect_composite.frag', 360, -300)
+set_vec(comp_glsl, 0, 'uCornerL', ex=left_x, ey=left_y)
+set_vec(comp_glsl, 1, 'uCornerR', ex=right_x, ey=right_y)
+set_vec(comp_glsl, 2, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE)
+
+connect(comp_glsl, 0, webcam)     # raw     -> sTD2DInputs[0]
+connect(comp_glsl, 1, glitch)     # glitched-> sTD2DInputs[1]
+connect(comp_glsl, 2, noise)      # grain   -> sTD2DInputs[2]
 
 
 # --- output -----------------------------------------------------------------------
-out = make(td.outTOP, 'out1', 380, -300)
+out = make(td.outTOP, 'out1', 560, -300)
 connect(out, 0, comp_glsl)
 out.viewer = True
 
 print(f"Done. Output: {out.path}")
 print("Reminders:")
-print("  * Select your webcam + enable Hands in the MediaPipe.tox.")
-print("  * If channels look wrong, verify SRC_* names (docs/channel_mapping.md).")
-print("  * Toggle MIRROR_X / SWAP_HANDS / FLIP_Y in config.py if the triangle")
-print("    tracks the wrong hand or is inverted, then re-run this script.")
-print("  * Check each GLSL TOP's node for compile errors (red); read its info via")
-print("    right-click > 'View Errors' if a shader fails to compile.")
+print("  * Make the finger-frame: thumb + index of BOTH hands = box corners.")
+print("  * Toggle MIRROR_X / FLIP_Y in config.py if the box is mirrored/inverted.")
+print("  * Tune glitch via GLITCH_* in config.py, then re-run this script.")
+print("  * Check each GLSL TOP's node for compile errors (red); right-click >")
+print("    'View Errors' if a shader fails to compile.")

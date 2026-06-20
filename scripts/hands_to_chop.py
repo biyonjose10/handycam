@@ -1,33 +1,46 @@
 # hands_to_chop.py — Script CHOP callbacks: parse the MediaPipe hands JSON DAT
-# into 4 channels (hand_left_x/y, hand_right_x/y).
+# into 4 channels (hand_left_x/y, hand_right_x/y), where each "hand_*" point is
+# the BOX CORNER for that hand: the midpoint of the thumb tip and index tip
+# (the "finger-frame" gesture). The two corners become opposite corners of the
+# rectangular mask.
 #
 # Loaded by build_network.py into the script_hands CHOP's "Callbacks DAT".
-# The placeholders __HANDS_DAT_PATH__ and __LANDMARK_INDEX__ are substituted at
-# build time from config.py — do not edit those by hand here.
+# Placeholders are substituted at build time from config.py.
 #
-# The plugin's /project1/MediaPipe/hands DAT contains JSON shaped like:
+# /project1/MediaPipe/hands JSON shape:
 #   {"gestureResults":{"landmarks":[[{x,y,z}*21], ...],
-#                      "handednesses":[[{"categoryName":"Left"/"Right",...}], ...]},
-#    "resolution":{"width":1280,"height":720}}
+#                      "handednesses":[[{"categoryName":"Left"/"Right"}], ...]}}
 # Coordinates are normalized 0..1, origin TOP-LEFT, y DOWN.
+# Landmark indices: 4 = thumb tip, 8 = index tip, 0 = wrist (fallback).
 
 import json
 
 HANDS_DAT = '__HANDS_DAT_PATH__'
-LM = __LANDMARK_INDEX__          # 0 = wrist, 9 ~ palm center
+THUMB = __THUMB_INDEX__
+INDEX = __INDEX_INDEX__
 
 DEFAULTS = {
-    'hand_left_x': 0.25, 'hand_left_y': 0.80,
-    'hand_right_x': 0.75, 'hand_right_y': 0.80,
+    'hand_left_x': 0.30, 'hand_left_y': 0.35,
+    'hand_right_x': 0.70, 'hand_right_y': 0.65,
 }
 NAMES = ('hand_left_x', 'hand_left_y', 'hand_right_x', 'hand_right_y')
+
+
+def _corner(hand):
+    """Midpoint of thumb tip and index tip; falls back to wrist (0)."""
+    n = len(hand)
+    if THUMB < n and INDEX < n:
+        t, i = hand[THUMB], hand[INDEX]
+        return (float(t['x']) + float(i['x'])) * 0.5, (float(t['y']) + float(i['y'])) * 0.5
+    p = hand[0]
+    return float(p['x']), float(p['y'])
 
 
 def onCook(scriptOp):
     scriptOp.clear()
     scriptOp.numSamples = 1
 
-    # Start from the last good values so a hand dropping out for a frame holds steady.
+    # Hold last good values so a hand dropping out for a frame stays steady.
     vals = dict(scriptOp.fetch('prev', dict(DEFAULTS)))
 
     dat = op(HANDS_DAT)
@@ -38,15 +51,15 @@ def onCook(scriptOp):
         lms = gr.get('landmarks', []) or []
         handed = gr.get('handednesses') or gr.get('handedness') or []
         for i, hand in enumerate(lms):
-            if not hand or LM >= len(hand):
+            if not hand:
                 continue
-            pt = hand[LM]
             label = 'Left'
             if i < len(handed) and handed[i]:
                 label = handed[i][0].get('categoryName', label)
             key = 'left' if str(label).lower().startswith('l') else 'right'
-            vals['hand_%s_x' % key] = float(pt['x'])
-            vals['hand_%s_y' % key] = float(pt['y'])
+            cx, cy = _corner(hand)
+            vals['hand_%s_x' % key] = cx
+            vals['hand_%s_y' % key] = cy
     except Exception as e:
         debug('hands_to_chop parse error:', e)
 
