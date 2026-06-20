@@ -15,9 +15,9 @@ LANDMARK_INDEX = 0
 # --- Webcam source ----------------------------------------------------------------
 # 'device' -> our own Video Device In TOP (default camera)
 # 'select' -> reuse an existing TOP elsewhere by path (set WEBCAM_SELECT_TOP)
-WEBCAM_SOURCE      = 'device'
-WEBCAM_SELECT_TOP  = '/project1/MediaPipe/null_video'   # only used if WEBCAM_SOURCE='select'
-WEBCAM_FLIP_X      = True     # mirror the displayed feed to match the plugin's flipped landmarks
+WEBCAM_SOURCE      = 'select'                       # reuse the plugin's feed (avoids camera contention)
+WEBCAM_SELECT_TOP  = '/project1/MediaPipe/video'    # the plugin's webcam TOP (same space as landmarks)
+WEBCAM_FLIP_X      = False    # plugin feed is already in landmark space; no extra mirror needed
 
 # --- Coordinate handling ----------------------------------------------------------
 FLIP_Y     = True    # MediaPipe y is top-down; TD UV is bottom-up -> use (1 - y)
