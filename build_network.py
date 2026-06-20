@@ -115,8 +115,15 @@ parser = parser.replace('__THUMB_INDEX__', str(C.THUMB_INDEX))
 parser = parser.replace('__INDEX_INDEX__', str(C.INDEX_INDEX))
 cb.text = parser
 
+# Per-frame cook trigger: a Script CHOP with no live input cooks once and stops.
+# Feed it a value that changes every frame so it re-parses the hands DAT each frame.
+tick = make(td.constantCHOP, 'frame_tick', -780, 0)
+setp(tick, name0='tick')
+setexpr(tick, 'value0', 'absTime.frame')
+
 script_hands = make(td.scriptCHOP, 'script_hands', -600, 0)
 script_hands.par.callbacks = cb.name
+connect(script_hands, 0, tick)          # cook trigger (values ignored by the script)
 if not op(C.HANDS_DAT_PATH):
     print(f"  [warn] HANDS_DAT_PATH '{C.HANDS_DAT_PATH}' not found yet")
 
@@ -147,18 +154,15 @@ def y_expr(name):
     return f"(1-{chan(name)})" if C.FLIP_Y else chan(name)
 
 
-# The rectangle is the bounding box of the two corners, so left/right is cosmetic.
-L = ('hand_right_x', 'hand_right_y') if C.SWAP_HANDS else ('hand_left_x', 'hand_left_y')
-R = ('hand_left_x', 'hand_left_y') if C.SWAP_HANDS else ('hand_right_x', 'hand_right_y')
-left_x, left_y = x_expr(L[0]), y_expr(L[1])
-right_x, right_y = x_expr(R[0]), y_expr(R[1])
+# Quad corner UV expressions (FLIP_Y / MIRROR_X applied per channel).
+CORNERS = ['c0', 'c1', 'c2', 'c3']
+corner_xy = {c: (x_expr(c + 'x'), y_expr(c + 'y')) for c in CORNERS}
 
-# Hand-motion magnitude (from the slope CHOP) -> 0..1, scaled by gain.
+# Hand-motion magnitude (from the slope CHOP, all 8 corner channels) -> 0..1.
 _sl = "op('null_slope')"
-motion_expr = (
-    "min(1.0, (({s}['hand_left_x']**2+{s}['hand_left_y']**2+"
-    "{s}['hand_right_x']**2+{s}['hand_right_y']**2)**0.5)*{g})"
-).format(s=_sl, g=C.GLITCH_MOTION_GAIN)
+_chs = ['c0x', 'c0y', 'c1x', 'c1y', 'c2x', 'c2y', 'c3x', 'c3y']
+_terms = '+'.join(f"{_sl}['{c}']**2" for c in _chs)
+motion_expr = f"min(1.0, (({_terms})**0.5)*{C.GLITCH_MOTION_GAIN})"
 
 
 # --- webcam source ----------------------------------------------------------------
@@ -210,11 +214,12 @@ connect(glitch, 0, halftone)            # content -> sTD2DInputs[0]
 connect(glitch, 1, glitch_fb)           # feedback -> sTD2DInputs[1]
 
 
-# --- rectangle compositor ---------------------------------------------------------
-comp_glsl = make_glsl('rect_composite', 'rect_composite.frag', 360, -300)
-set_vec(comp_glsl, 0, 'uCornerL', ex=left_x, ey=left_y)
-set_vec(comp_glsl, 1, 'uCornerR', ex=right_x, ey=right_y)
-set_vec(comp_glsl, 2, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE)
+# --- quad compositor --------------------------------------------------------------
+comp_glsl = make_glsl('quad_composite', 'quad_composite.frag', 360, -300)
+for idx, c in enumerate(CORNERS):           # uC0..uC3 in vec slots 0..3
+    ex, ey = corner_xy[c]
+    set_vec(comp_glsl, idx, 'u' + c.upper(), ex=ex, ey=ey)
+set_vec(comp_glsl, 4, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE)
 
 connect(comp_glsl, 0, webcam)     # raw     -> sTD2DInputs[0]
 connect(comp_glsl, 1, glitch)     # glitched-> sTD2DInputs[1]
