@@ -9,9 +9,12 @@ Script CHOP parses into channels (see scripts/hands_to_chop.py).
 # --- Plugin hookup ----------------------------------------------------------------
 # The plugin's hands output DAT (JSON). Confirmed path from the loaded MediaPipe.tox:
 HANDS_DAT_PATH = '/project1/MediaPipe/hands'
-# Each hand's box corner = midpoint of these two landmarks (finger-frame gesture).
-THUMB_INDEX = 4   # thumb tip
-INDEX_INDEX = 8   # index fingertip
+# Fingertip landmarks used to frame the two quads:
+#   Quad A (normal effect)  = thumb tip + index tip
+#   Quad B (inverse effect) = index tip + middle tip
+THUMB_INDEX  = 4    # thumb tip
+INDEX_INDEX  = 8    # index fingertip
+MIDDLE_INDEX = 12   # middle fingertip
 
 # --- Webcam source ----------------------------------------------------------------
 # 'device' -> our own Video Device In TOP (default camera)

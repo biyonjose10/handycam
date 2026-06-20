@@ -9,7 +9,7 @@
 // Inside we add paper grain + slight desaturation; outside stays a clean webcam.
 
 uniform vec2 uC0, uC1, uC2, uC3;
-uniform vec2 uGrain;     // x = grain opacity (0..1), y = desaturation (0..1)
+uniform vec3 uGrain;     // x = grain opacity, y = desaturation, z = invert flag (>0.5)
 
 out vec4 fragColor;
 
@@ -37,7 +37,7 @@ void main() {
 
     vec3 col;
     if (inQuad(uv)) {
-        col = fx;
+        col = (uGrain.z > 0.5) ? (vec3(1.0) - fx) : fx;   // inverse layer = negative colors
         col = mix(col, col * grain, clamp(uGrain.x, 0.0, 1.0));
         col = mix(col, vec3(luma(col)), clamp(uGrain.y, 0.0, 1.0));
     } else {

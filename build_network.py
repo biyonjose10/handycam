@@ -5,13 +5,14 @@ Run this INSIDE TouchDesigner's Textport (Alt+T):
 
     exec(open(r'C:/Users/biyon/handycam/build_network.py').read())
 
-It (re)creates /handycam containing the full hand-tracked risograph triangle
-network: CHOP chain -> webcam source -> riso GLSL -> halftone GLSL ->
-triangle compositor -> Out. Idempotent: deletes and rebuilds /handycam each run.
+It (re)creates /handycam containing the hand-tracked risograph effect: CHOP chain
+-> webcam source -> riso GLSL -> halftone GLSL -> glitch GLSL -> quad compositor A
+(normal) -> quad compositor B (inverse) -> Out. Two finger-framed quads:
+A = thumb+index, B = index+middle. Idempotent: rebuilds /handycam each run.
 
 Prereqs:
   1. The torinmb MediaPipe.tox is in the project, webcam selected, Hands enabled.
-  2. config.py has the correct HANDS_CHOP_PATH and SRC_* channel names.
+  2. config.py has the correct HANDS_DAT_PATH.
 """
 
 import os
@@ -94,7 +95,7 @@ def make_glsl(name, shader_file, x, y):
     return g
 
 
-def set_vec(g, idx, uname, vx=None, vy=None, ex=None, ey=None):
+def set_vec(g, idx, uname, vx=None, vy=None, vz=None, ex=None, ey=None, ez=None):
     """Define custom uniform vec on a GLSL TOP (Vectors page, 0-indexed slot)."""
     setp(g, **{f'vec{idx}name': uname})
     if ex is not None:
@@ -105,6 +106,10 @@ def set_vec(g, idx, uname, vx=None, vy=None, ex=None, ey=None):
         setexpr(g, f'vec{idx}valuey', ey)
     elif vy is not None:
         setp(g, **{f'vec{idx}valuey': vy})
+    if ez is not None:
+        setexpr(g, f'vec{idx}valuez', ez)
+    elif vz is not None:
+        setp(g, **{f'vec{idx}valuez': vz})
 
 
 # --- CHOP chain: hands JSON DAT -> Script CHOP parser -> lag -> null --------------
@@ -113,6 +118,7 @@ parser = read_script('hands_to_chop.py')
 parser = parser.replace('__HANDS_DAT_PATH__', C.HANDS_DAT_PATH)
 parser = parser.replace('__THUMB_INDEX__', str(C.THUMB_INDEX))
 parser = parser.replace('__INDEX_INDEX__', str(C.INDEX_INDEX))
+parser = parser.replace('__MIDDLE_INDEX__', str(C.MIDDLE_INDEX))
 cb.text = parser
 
 # Per-frame cook trigger: a Script CHOP with no live input cooks once and stops.
@@ -154,13 +160,14 @@ def y_expr(name):
     return f"(1-{chan(name)})" if C.FLIP_Y else chan(name)
 
 
-# Quad corner UV expressions (FLIP_Y / MIRROR_X applied per channel).
-CORNERS = ['c0', 'c1', 'c2', 'c3']
-corner_xy = {c: (x_expr(c + 'x'), y_expr(c + 'y')) for c in CORNERS}
+# Quad corner UV expressions (FLIP_Y / MIRROR_X applied per channel), for both quads.
+QUAD_A = ['cA0', 'cA1', 'cA2', 'cA3']
+QUAD_B = ['cB0', 'cB1', 'cB2', 'cB3']
+corner_xy = {c: (x_expr(c + 'x'), y_expr(c + 'y')) for c in QUAD_A + QUAD_B}
 
-# Hand-motion magnitude (from the slope CHOP, all 8 corner channels) -> 0..1.
+# Hand-motion magnitude (from the slope CHOP, all 16 corner channels) -> 0..1.
 _sl = "op('null_slope')"
-_chs = ['c0x', 'c0y', 'c1x', 'c1y', 'c2x', 'c2y', 'c3x', 'c3y']
+_chs = [c + ax for c in QUAD_A + QUAD_B for ax in ('x', 'y')]
 _terms = '+'.join(f"{_sl}['{c}']**2" for c in _chs)
 motion_expr = f"min(1.0, (({_terms})**0.5)*{C.GLITCH_MOTION_GAIN})"
 
@@ -214,21 +221,26 @@ connect(glitch, 0, halftone)            # content -> sTD2DInputs[0]
 connect(glitch, 1, glitch_fb)           # feedback -> sTD2DInputs[1]
 
 
-# --- quad compositor --------------------------------------------------------------
-comp_glsl = make_glsl('quad_composite', 'quad_composite.frag', 360, -300)
-for idx, c in enumerate(CORNERS):           # uC0..uC3 in vec slots 0..3
-    ex, ey = corner_xy[c]
-    set_vec(comp_glsl, idx, 'u' + c.upper(), ex=ex, ey=ey)
-set_vec(comp_glsl, 4, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE)
+# --- quad compositors: layer A (normal) then layer B (inverse) on top -------------
+def quad_layer(name, quad, x, background, invert):
+    g = make_glsl(name, 'quad_composite.frag', x, -300)
+    for idx, c in enumerate(quad):          # uC0..uC3 in vec slots 0..3
+        ex, ey = corner_xy[c]
+        set_vec(g, idx, 'uC%d' % idx, ex=ex, ey=ey)
+    set_vec(g, 4, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE,
+            vz=(1.0 if invert else 0.0))
+    connect(g, 0, background)   # shown outside the quad
+    connect(g, 1, glitch)       # effect inside the quad
+    connect(g, 2, noise)        # paper grain
+    return g
 
-connect(comp_glsl, 0, webcam)     # raw     -> sTD2DInputs[0]
-connect(comp_glsl, 1, glitch)     # glitched-> sTD2DInputs[1]
-connect(comp_glsl, 2, noise)      # grain   -> sTD2DInputs[2]
+quad_a = quad_layer('quad_a', QUAD_A, 360, webcam, invert=False)
+quad_b = quad_layer('quad_b', QUAD_B, 560, quad_a, invert=True)
 
 
 # --- output -----------------------------------------------------------------------
-out = make(td.outTOP, 'out1', 560, -300)
-connect(out, 0, comp_glsl)
+out = make(td.outTOP, 'out1', 760, -300)
+connect(out, 0, quad_b)
 out.viewer = True
 
 print(f"Done. Output: {out.path}")
