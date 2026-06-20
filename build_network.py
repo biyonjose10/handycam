@@ -22,6 +22,7 @@ import td
 # ---------------------------------------------------------------------------------
 PROJECT_DIR = r'C:\Users\biyon\handycam'
 SHADERS_DIR = os.path.join(PROJECT_DIR, 'shaders')
+SCRIPTS_DIR = os.path.join(PROJECT_DIR, 'scripts')
 
 if PROJECT_DIR not in sys.path:
     sys.path.insert(0, PROJECT_DIR)
@@ -33,6 +34,11 @@ C = _cfg
 # --- small helpers ----------------------------------------------------------------
 def read_shader(name):
     with open(os.path.join(SHADERS_DIR, name), 'r', encoding='utf-8') as f:
+        return f.read()
+
+
+def read_script(name):
+    with open(os.path.join(SCRIPTS_DIR, name), 'r', encoding='utf-8') as f:
         return f.read()
 
 
@@ -101,21 +107,21 @@ def set_vec(g, idx, uname, vx=None, vy=None, ex=None, ey=None):
         setp(g, **{f'vec{idx}valuey': vy})
 
 
-# --- CHOP chain: plugin hands -> select/rename -> lag -> null ---------------------
-sel = make(td.selectCHOP, 'sel_hands', -600, 0)
-src_names = f"{C.SRC_LEFT_X} {C.SRC_LEFT_Y} {C.SRC_RIGHT_X} {C.SRC_RIGHT_Y}"
-setp(sel, channames=src_names, renamefrom=src_names,
-     renameto='hand_left_x hand_left_y hand_right_x hand_right_y')
-hands_src = op(C.HANDS_CHOP_PATH)
-if hands_src:
-    connect(sel, 0, hands_src)
-else:
-    print(f"  [warn] HANDS_CHOP_PATH '{C.HANDS_CHOP_PATH}' not found — "
-          f"wire it manually after adding MediaPipe.tox")
+# --- CHOP chain: hands JSON DAT -> Script CHOP parser -> lag -> null --------------
+cb = make(td.textDAT, 'script_hands_callbacks', -600, -150)
+parser = read_script('hands_to_chop.py')
+parser = parser.replace('__HANDS_DAT_PATH__', C.HANDS_DAT_PATH)
+parser = parser.replace('__LANDMARK_INDEX__', str(C.LANDMARK_INDEX))
+cb.text = parser
+
+script_hands = make(td.scriptCHOP, 'script_hands', -600, 0)
+script_hands.par.callbacks = cb.name
+if not op(C.HANDS_DAT_PATH):
+    print(f"  [warn] HANDS_DAT_PATH '{C.HANDS_DAT_PATH}' not found yet")
 
 lag = make(td.lagCHOP, 'lag_hands', -420, 0)
 setp(lag, lag1=C.LAG, lag2=C.LAG)
-connect(lag, 0, sel)
+connect(lag, 0, script_hands)
 
 null_hands = make(td.nullCHOP, 'null_hands', -240, 0)
 connect(null_hands, 0, lag)
@@ -142,14 +148,20 @@ right_x, right_y = x_expr(R[0]), y_expr(R[1])
 
 
 # --- webcam source ----------------------------------------------------------------
-if C.USE_PLUGIN_PASSTHROUGH:
-    webcam = make(td.selectTOP, 'webcam_src', -600, -300)
-    setp(webcam, top=C.PLUGIN_VIDEO_TOP)
-    if not op(C.PLUGIN_VIDEO_TOP):
-        print(f"  [warn] PLUGIN_VIDEO_TOP '{C.PLUGIN_VIDEO_TOP}' not found yet")
+if C.WEBCAM_SOURCE == 'select':
+    cam = make(td.selectTOP, 'webcam_in', -600, -300)
+    setp(cam, top=C.WEBCAM_SELECT_TOP)
+    if not op(C.WEBCAM_SELECT_TOP):
+        print(f"  [warn] WEBCAM_SELECT_TOP '{C.WEBCAM_SELECT_TOP}' not found yet")
 else:
-    webcam = make(td.videodeviceinTOP, 'webcam_src', -600, -300)
-    setp(webcam, resolutionw=C.RESOLUTION[0], resolutionh=C.RESOLUTION[1])
+    cam = make(td.videodeviceinTOP, 'webcam_in', -600, -300)
+
+if C.WEBCAM_FLIP_X:
+    webcam = make(td.flipTOP, 'webcam_flip', -420, -300)
+    setp(webcam, flipx=1)
+    connect(webcam, 0, cam)
+else:
+    webcam = cam
 
 
 # --- risograph + halftone ---------------------------------------------------------
