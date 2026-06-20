@@ -1,14 +1,16 @@
 # hands_to_chop.py — Script CHOP callbacks: parse the MediaPipe hands JSON DAT
-# into TWO finger-framed quads (16 channels):
-#   Quad A (cA0..cA3): both hands' THUMB tip + INDEX tip   -> normal effect
-#   Quad B (cB0..cB3): both hands' INDEX tip + MIDDLE tip   -> inverse effect
+# into THREE finger-framed quads (24 channels):
+#   Quad A (cA0..cA3): both hands' THUMB  + INDEX  tips -> Risograph
+#   Quad B (cB0..cB3): both hands' INDEX  + MIDDLE tips -> Cyanotype
+#   Quad C (cC0..cC3): both hands' MIDDLE + RING   tips -> Stippling
 #
 # Each quad: 2 fingertips per hand = 4 points, ordered counter-clockwise around
 # their centroid so the point-in-quad test always sees a clean convex polygon.
 #
 # Loaded by build_network.py into the script_hands CHOP's "Callbacks DAT".
 # Placeholders are substituted at build time from config.py.
-# Coords normalized 0..1, origin TOP-LEFT, y DOWN. LM 4=thumb, 8=index, 12=middle.
+# Coords normalized 0..1, origin TOP-LEFT, y DOWN.
+# LM 4=thumb, 8=index, 12=middle, 16=ring (fingertips).
 
 import json
 import math
@@ -17,13 +19,17 @@ HANDS_DAT = '__HANDS_DAT_PATH__'
 THUMB = __THUMB_INDEX__
 INDEX = __INDEX_INDEX__
 MIDDLE = __MIDDLE_INDEX__
+RING = __RING_INDEX__
 
-DEF_A = [(0.30, 0.40), (0.60, 0.40), (0.60, 0.60), (0.30, 0.60)]
-DEF_B = [(0.40, 0.28), (0.70, 0.28), (0.70, 0.48), (0.40, 0.48)]
-NAMES = (
-    'cA0x', 'cA0y', 'cA1x', 'cA1y', 'cA2x', 'cA2y', 'cA3x', 'cA3y',
-    'cB0x', 'cB0y', 'cB1x', 'cB1y', 'cB2x', 'cB2y', 'cB3x', 'cB3y',
-)
+# (lo finger, hi finger) per quad, and a default centered quad for each.
+QUADS = ('A', 'B', 'C')
+PAIRS = {'A': (THUMB, INDEX), 'B': (INDEX, MIDDLE), 'C': (MIDDLE, RING)}
+DEFAULTS = {
+    'A': [(0.24, 0.42), (0.50, 0.42), (0.50, 0.62), (0.24, 0.62)],
+    'B': [(0.38, 0.30), (0.64, 0.30), (0.64, 0.50), (0.38, 0.50)],
+    'C': [(0.52, 0.42), (0.78, 0.42), (0.78, 0.62), (0.52, 0.62)],
+}
+NAMES = tuple('c%s%d%s' % (q, i, ax) for q in QUADS for i in range(4) for ax in ('x', 'y'))
 
 
 def _pt(hand, idx):
@@ -51,8 +57,8 @@ def onCook(scriptOp):
     scriptOp.clear()
     scriptOp.numSamples = 1
 
-    prevA, prevB = scriptOp.fetch('prev', (list(DEF_A), list(DEF_B)))
-    A, B = [], []
+    prev = scriptOp.fetch('prev', {q: list(DEFAULTS[q]) for q in QUADS})
+    acc = {q: [] for q in QUADS}
     dat = op(HANDS_DAT)
     try:
         txt = dat.text if dat else ''
@@ -62,18 +68,17 @@ def onCook(scriptOp):
         for hand in lms[:2]:
             if not hand:
                 continue
-            A.append(_pt(hand, THUMB))
-            A.append(_pt(hand, INDEX))
-            B.append(_pt(hand, INDEX))
-            B.append(_pt(hand, MIDDLE))
+            for q in QUADS:
+                lo, hi = PAIRS[q]
+                acc[q].append(_pt(hand, lo))
+                acc[q].append(_pt(hand, hi))
     except Exception as e:
         debug('hands_to_chop parse error:', e)
 
-    A = _finalize(A, prevA)
-    B = _finalize(B, prevB)
-    scriptOp.store('prev', (A, B))
+    out = {q: _finalize(acc[q], prev[q]) for q in QUADS}
+    scriptOp.store('prev', out)
 
-    flat = [v for p in A for v in p] + [v for p in B for v in p]
+    flat = [v for q in QUADS for p in out[q] for v in p]
     for name, val in zip(NAMES, flat):
         scriptOp.appendChan(name).vals = [val]
     return

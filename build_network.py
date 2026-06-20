@@ -5,10 +5,10 @@ Run this INSIDE TouchDesigner's Textport (Alt+T):
 
     exec(open(r'C:/Users/biyon/handycam/build_network.py').read())
 
-It (re)creates /handycam containing the hand-tracked risograph effect: CHOP chain
--> webcam source -> riso GLSL -> halftone GLSL -> glitch GLSL -> quad compositor A
-(normal) -> quad compositor B (inverse) -> Out. Two finger-framed quads:
-A = thumb+index, B = index+middle. Idempotent: rebuilds /handycam each run.
+It (re)creates /handycam: CHOP chain -> webcam source -> three print-effect GLSL
+TOPs (Risograph / Cyanotype / Stippling) -> three stacked quad compositors -> Out.
+Three finger-framed quads: A = thumb+index (Riso), B = index+middle (Cyanotype),
+C = middle+ring (Stipple). Idempotent: rebuilds /handycam each run.
 
 Prereqs:
   1. The torinmb MediaPipe.tox is in the project, webcam selected, Hands enabled.
@@ -119,6 +119,7 @@ parser = parser.replace('__HANDS_DAT_PATH__', C.HANDS_DAT_PATH)
 parser = parser.replace('__THUMB_INDEX__', str(C.THUMB_INDEX))
 parser = parser.replace('__INDEX_INDEX__', str(C.INDEX_INDEX))
 parser = parser.replace('__MIDDLE_INDEX__', str(C.MIDDLE_INDEX))
+parser = parser.replace('__RING_INDEX__', str(C.RING_INDEX))
 cb.text = parser
 
 # Per-frame cook trigger: a Script CHOP with no live input cooks once and stops.
@@ -140,12 +141,6 @@ connect(lag, 0, script_hands)
 null_hands = make(td.nullCHOP, 'null_hands', -240, 0)
 connect(null_hands, 0, lag)
 
-# Hand-speed -> glitch intensity: derivative of the corner positions.
-slope = make(td.slopeCHOP, 'hand_slope', -420, 150)
-connect(slope, 0, null_hands)
-null_slope = make(td.nullCHOP, 'null_slope', -240, 150)
-connect(null_slope, 0, slope)
-
 
 # --- coordinate expressions for the GLSL uniforms --------------------------------
 def chan(name):
@@ -160,16 +155,11 @@ def y_expr(name):
     return f"(1-{chan(name)})" if C.FLIP_Y else chan(name)
 
 
-# Quad corner UV expressions (FLIP_Y / MIRROR_X applied per channel), for both quads.
-QUAD_A = ['cA0', 'cA1', 'cA2', 'cA3']
-QUAD_B = ['cB0', 'cB1', 'cB2', 'cB3']
-corner_xy = {c: (x_expr(c + 'x'), y_expr(c + 'y')) for c in QUAD_A + QUAD_B}
-
-# Hand-motion magnitude (from the slope CHOP, all 16 corner channels) -> 0..1.
-_sl = "op('null_slope')"
-_chs = [c + ax for c in QUAD_A + QUAD_B for ax in ('x', 'y')]
-_terms = '+'.join(f"{_sl}['{c}']**2" for c in _chs)
-motion_expr = f"min(1.0, (({_terms})**0.5)*{C.GLITCH_MOTION_GAIN})"
+# Quad corner UV expressions (FLIP_Y / MIRROR_X applied per channel), for all 3 quads.
+QUAD_A = ['cA0', 'cA1', 'cA2', 'cA3']   # thumb + index   -> Risograph
+QUAD_B = ['cB0', 'cB1', 'cB2', 'cB3']   # index + middle  -> Cyanotype
+QUAD_C = ['cC0', 'cC1', 'cC2', 'cC3']   # middle + ring   -> Stippling
+corner_xy = {c: (x_expr(c + 'x'), y_expr(c + 'y')) for c in QUAD_A + QUAD_B + QUAD_C}
 
 
 # --- webcam source ----------------------------------------------------------------
@@ -189,15 +179,18 @@ else:
     webcam = cam
 
 
-# --- risograph + halftone ---------------------------------------------------------
-riso = make_glsl('riso', 'riso.frag', -360, -300)
-set_vec(riso, 0, 'uOffsetPx', vx=C.MISREG_PX, vy=C.MISREG_PX)
+# --- three print effects (each from the clean webcam) -----------------------------
+riso = make_glsl('riso_cmyk', 'riso_cmyk.frag', -360, -300)
+set_vec(riso, 0, 'uOffsetPx', vx=C.RISO_OFFSET_PX, vy=C.RISO_OFFSET_PX)
 connect(riso, 0, webcam)
 
-halftone = make_glsl('halftone', 'halftone.frag', -120, -300)
-set_vec(halftone, 0, 'uCellPx', vx=C.CELL_PX, vy=C.CELL_PX)
-set_vec(halftone, 1, 'uDensity', vx=C.DENSITY_TOP, vy=C.DENSITY_BOTTOM)
-connect(halftone, 0, riso)
+cyano = make_glsl('cyanotype', 'cyanotype.frag', -360, -120)
+set_vec(cyano, 0, 'uParams', vx=C.CYANO_CONTRAST, vy=C.CYANO_BLEED_PX)
+connect(cyano, 0, webcam)
+
+stipple = make_glsl('stipple', 'stipple_red.frag', -360, 60)
+set_vec(stipple, 0, 'uCell', vx=C.STIPPLE_CELL_PX, vy=C.STIPPLE_CELL_PX)
+connect(stipple, 0, webcam)
 
 
 # --- paper grain ------------------------------------------------------------------
@@ -206,47 +199,33 @@ setp(noise, resolutionw=C.RESOLUTION[0], resolutionh=C.RESOLUTION[1],
      mono=1, period=20.0)
 
 
-# --- glitch stage (with feedback trails) ------------------------------------------
-glitch = make_glsl('glitch', 'glitch.frag', 120, -300)
-set_vec(glitch, 0, 'uShiftPx', vx=C.GLITCH_RGB_SHIFT_PX, vy=0.0)
-set_vec(glitch, 1, 'uScan', vx=C.GLITCH_SCAN_FREQ, vy=C.GLITCH_SCAN_AMT)
-set_vec(glitch, 2, 'uFeedback', vx=C.GLITCH_FEEDBACK, vy=0.0)
-set_vec(glitch, 3, 'uMotion', ex=motion_expr)
-set_vec(glitch, 4, 'uTime', ex='absTime.seconds')
-
-glitch_fb = make(td.feedbackTOP, 'glitch_fb', 120, -460)
-setp(glitch_fb, top=glitch.name)        # capture glitch's previous frame
-
-connect(glitch, 0, halftone)            # content -> sTD2DInputs[0]
-connect(glitch, 1, glitch_fb)           # feedback -> sTD2DInputs[1]
-
-
-# --- quad compositors: layer A (normal) then layer B (inverse) on top -------------
-def quad_layer(name, quad, x, background, invert):
+# --- quad compositors: A (riso) -> B (cyanotype) -> C (stipple), stacked -----------
+def quad_layer(name, quad, x, background, effect):
     g = make_glsl(name, 'quad_composite.frag', x, -300)
     for idx, c in enumerate(quad):          # uC0..uC3 in vec slots 0..3
         ex, ey = corner_xy[c]
         set_vec(g, idx, 'uC%d' % idx, ex=ex, ey=ey)
-    set_vec(g, 4, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE,
-            vz=(1.0 if invert else 0.0))
+    set_vec(g, 4, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE, vz=0.0)
     connect(g, 0, background)   # shown outside the quad
-    connect(g, 1, glitch)       # effect inside the quad
+    connect(g, 1, effect)       # effect shown inside the quad
     connect(g, 2, noise)        # paper grain
     return g
 
-quad_a = quad_layer('quad_a', QUAD_A, 360, webcam, invert=False)
-quad_b = quad_layer('quad_b', QUAD_B, 560, quad_a, invert=True)
+quad_a = quad_layer('quad_a', QUAD_A, 120, webcam, riso)
+quad_b = quad_layer('quad_b', QUAD_B, 320, quad_a, cyano)
+quad_c = quad_layer('quad_c', QUAD_C, 520, quad_b, stipple)
 
 
 # --- output -----------------------------------------------------------------------
-out = make(td.outTOP, 'out1', 760, -300)
-connect(out, 0, quad_b)
+out = make(td.outTOP, 'out1', 720, -300)
+connect(out, 0, quad_c)
 out.viewer = True
 
 print(f"Done. Output: {out.path}")
 print("Reminders:")
-print("  * Make the finger-frame: thumb + index of BOTH hands = box corners.")
-print("  * Toggle MIRROR_X / FLIP_Y in config.py if the box is mirrored/inverted.")
-print("  * Tune glitch via GLITCH_* in config.py, then re-run this script.")
+print("  * Quads: thumb+index = Risograph, index+middle = Cyanotype,")
+print("    middle+ring = Stippling. Frame each with both hands.")
+print("  * Toggle MIRROR_X / FLIP_Y in config.py if the quads are mirrored/inverted.")
+print("  * Tune RISO_/CYANO_/STIPPLE_ values in config.py, then re-run this script.")
 print("  * Check each GLSL TOP's node for compile errors (red); right-click >")
 print("    'View Errors' if a shader fails to compile.")

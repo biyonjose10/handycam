@@ -2,54 +2,47 @@
 Handycam configuration.
 
 Edit these values, then re-run build_network.py inside TouchDesigner's Textport.
-The hand data comes from the torinmb MediaPipe plugin as a JSON DAT, which a small
-Script CHOP parses into channels (see scripts/hands_to_chop.py).
+Hand data comes from the torinmb MediaPipe plugin as a JSON DAT, which a Script CHOP
+parses into three finger-framed quads (see scripts/hands_to_chop.py).
 """
 
 # --- Plugin hookup ----------------------------------------------------------------
-# The plugin's hands output DAT (JSON). Confirmed path from the loaded MediaPipe.tox:
 HANDS_DAT_PATH = '/project1/MediaPipe/hands'
-# Fingertip landmarks used to frame the two quads:
-#   Quad A (normal effect)  = thumb tip + index tip
-#   Quad B (inverse effect) = index tip + middle tip
-THUMB_INDEX  = 4    # thumb tip
-INDEX_INDEX  = 8    # index fingertip
-MIDDLE_INDEX = 12   # middle fingertip
+
+# Fingertip landmarks framing the three quads:
+#   Quad A (Risograph) = thumb + index
+#   Quad B (Cyanotype) = index + middle
+#   Quad C (Stippling) = middle + ring
+THUMB_INDEX  = 4
+INDEX_INDEX  = 8
+MIDDLE_INDEX = 12
+RING_INDEX   = 16
 
 # --- Webcam source ----------------------------------------------------------------
-# 'device' -> our own Video Device In TOP (default camera)
-# 'select' -> reuse an existing TOP elsewhere by path (set WEBCAM_SELECT_TOP)
-WEBCAM_SOURCE      = 'select'                       # reuse the plugin's feed (avoids camera contention)
-WEBCAM_SELECT_TOP  = '/project1/MediaPipe/video'    # the plugin's webcam TOP (same space as landmarks)
-WEBCAM_FLIP_X      = False    # plugin feed is already in landmark space; no extra mirror needed
+WEBCAM_SOURCE      = 'select'                     # reuse the plugin's feed (no camera contention)
+WEBCAM_SELECT_TOP  = '/project1/MediaPipe/video'  # plugin webcam TOP (same space as landmarks)
+WEBCAM_FLIP_X      = False
 
 # --- Coordinate handling ----------------------------------------------------------
-FLIP_Y     = True    # MediaPipe y is top-down; TD UV is bottom-up -> use (1 - y)
-MIRROR_X   = False   # flip landmark x if the box is left/right reversed
-SWAP_HANDS = False   # cosmetic now (box is the bounding box of both corners)
-
-# --- Glitch (inside the box) ------------------------------------------------------
-GLITCH_RGB_SHIFT_PX = 6.0    # chromatic split base, pixels
-GLITCH_SCAN_FREQ    = 400.0  # scanline frequency
-GLITCH_SCAN_AMT     = 0.35   # scanline strength 0..1
-GLITCH_FEEDBACK     = 0.85   # trail/echo amount 0..~0.97 (higher = longer trails)
-GLITCH_MOTION_GAIN  = 40.0   # how strongly hand speed drives glitch intensity
+FLIP_Y   = True     # MediaPipe y is top-down; TD UV is bottom-up -> use (1 - y)
+MIRROR_X = False    # flip landmark x if the quads are left/right reversed
 
 # --- Smoothing --------------------------------------------------------------------
-LAG = 0.07               # Lag CHOP time constant in seconds (0.05-0.10)
+LAG = 0.07          # Lag CHOP time constant in seconds (0.05-0.10)
 
-# --- Risograph --------------------------------------------------------------------
-PALETTE   = ['#1a3a6e', '#2d5a27', '#d4a017', '#ffffff']   # baked into riso.frag (reference)
-MISREG_PX = 3.0          # misregistration diagonal offset, pixels (2-4)
+# --- Effect: Risograph (quad A) ---------------------------------------------------
+RISO_OFFSET_PX = 4.0     # misregistration offset between ink passes (2-6)
 
-# --- Halftone ---------------------------------------------------------------------
-CELL_PX        = 10.0    # dot cell size @1280x720 (8-12)
-DENSITY_TOP    = 1.3     # cell multiplier at top of frame (>1 = sparser/smaller)
-DENSITY_BOTTOM = 0.8     # cell multiplier at bottom (<1 = denser/bigger)
+# --- Effect: Cyanotype (quad B) ---------------------------------------------------
+CYANO_CONTRAST = 1.6     # tonal contrast (1.0 = none, higher = starker)
+CYANO_BLEED_PX = 2.0     # soft photochemical bleed radius, pixels
 
-# --- Paper / finish ---------------------------------------------------------------
-GRAIN_OPACITY = 0.15     # paper-grain overlay opacity
-DESATURATE    = 0.20     # desaturation amount inside the triangle
+# --- Effect: Stippling (quad C) ---------------------------------------------------
+STIPPLE_CELL_PX = 14.0   # halftone dot cell size @1280x720 (coarser = bigger dots)
+
+# --- Paper / finish (applied inside every quad) -----------------------------------
+GRAIN_OPACITY = 0.08     # paper-grain overlay opacity
+DESATURATE    = 0.0      # keep 0 to preserve the vivid ink colors
 
 # --- Output -----------------------------------------------------------------------
 RESOLUTION = (1280, 720)
