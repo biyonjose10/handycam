@@ -4,6 +4,9 @@
 Backup/
 *.dmp
 
+# Downloaded MediaPipe plugin (173 MB; re-download from torinmb/mediapipe-touchdesigner releases)
+plugin/
+
 # Python
 __pycache__/
 *.pyc
