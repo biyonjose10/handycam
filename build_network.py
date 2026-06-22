@@ -6,8 +6,8 @@ Run this INSIDE TouchDesigner's Textport (Alt+T):
     exec(open(r'C:/Users/biyon/handycam/build_network.py').read())
 
 It (re)creates /handycam: CHOP chain -> webcam source -> three print-effect GLSL
-TOPs (Risograph / Cyanotype / Stippling) -> three stacked quad compositors -> Out.
-Three finger-framed quads: A = thumb+index (Riso), B = index+middle (Cyanotype),
+TOPs (Risograph / Negative / Stippling) -> three stacked quad compositors -> Out.
+Three finger-framed quads: A = thumb+index (Riso), B = index+middle (Negative),
 C = middle+ring (Stipple). Idempotent: rebuilds /handycam each run.
 
 Prereqs:
@@ -157,7 +157,7 @@ def y_expr(name):
 
 # Quad corner UV expressions (FLIP_Y / MIRROR_X applied per channel), for all 3 quads.
 QUAD_A = ['cA0', 'cA1', 'cA2', 'cA3']   # thumb + index   -> Risograph
-QUAD_B = ['cB0', 'cB1', 'cB2', 'cB3']   # index + middle  -> Cyanotype
+QUAD_B = ['cB0', 'cB1', 'cB2', 'cB3']   # index + middle  -> Negative
 QUAD_C = ['cC0', 'cC1', 'cC2', 'cC3']   # middle + ring   -> Stippling
 corner_xy = {c: (x_expr(c + 'x'), y_expr(c + 'y')) for c in QUAD_A + QUAD_B + QUAD_C}
 
@@ -184,9 +184,9 @@ riso = make_glsl('riso_cmyk', 'riso_cmyk.frag', -360, -300)
 set_vec(riso, 0, 'uOffsetPx', vx=C.RISO_OFFSET_PX, vy=C.RISO_OFFSET_PX)
 connect(riso, 0, webcam)
 
-cyano = make_glsl('cyanotype', 'cyanotype.frag', -360, -120)
-set_vec(cyano, 0, 'uParams', vx=C.CYANO_CONTRAST, vy=C.CYANO_BLEED_PX)
-connect(cyano, 0, webcam)
+negative = make_glsl('negative', 'negative.frag', -360, -120)
+set_vec(negative, 0, 'uAmount', vx=C.NEGATIVE_AMOUNT)
+connect(negative, 0, webcam)
 
 stipple = make_glsl('stipple', 'stipple_red.frag', -360, 60)
 set_vec(stipple, 0, 'uCell', vx=C.STIPPLE_CELL_PX, vy=C.STIPPLE_CELL_PX)
@@ -199,7 +199,7 @@ setp(noise, resolutionw=C.RESOLUTION[0], resolutionh=C.RESOLUTION[1],
      mono=1, period=20.0)
 
 
-# --- quad compositors: A (riso) -> B (cyanotype) -> C (stipple), stacked -----------
+# --- quad compositors: A (riso) -> B (negative) -> C (stipple), stacked ------------
 def quad_layer(name, quad, x, background, effect):
     g = make_glsl(name, 'quad_composite.frag', x, -300)
     for idx, c in enumerate(quad):          # uC0..uC3 in vec slots 0..3
@@ -212,7 +212,7 @@ def quad_layer(name, quad, x, background, effect):
     return g
 
 quad_a = quad_layer('quad_a', QUAD_A, 120, webcam, riso)
-quad_b = quad_layer('quad_b', QUAD_B, 320, quad_a, cyano)
+quad_b = quad_layer('quad_b', QUAD_B, 320, quad_a, negative)
 quad_c = quad_layer('quad_c', QUAD_C, 520, quad_b, stipple)
 
 
@@ -223,9 +223,9 @@ out.viewer = True
 
 print(f"Done. Output: {out.path}")
 print("Reminders:")
-print("  * Quads: thumb+index = Risograph, index+middle = Cyanotype,")
+print("  * Quads: thumb+index = Risograph, index+middle = Negative,")
 print("    middle+ring = Stippling. Frame each with both hands.")
 print("  * Toggle MIRROR_X / FLIP_Y in config.py if the quads are mirrored/inverted.")
-print("  * Tune RISO_/CYANO_/STIPPLE_ values in config.py, then re-run this script.")
+print("  * Tune RISO_/NEGATIVE_/STIPPLE_ values in config.py, then re-run this script.")
 print("  * Check each GLSL TOP's node for compile errors (red); right-click >")
 print("    'View Errors' if a shader fails to compile.")

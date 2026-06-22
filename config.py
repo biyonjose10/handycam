@@ -11,7 +11,7 @@ HANDS_DAT_PATH = '/project1/MediaPipe/hands'
 
 # Fingertip landmarks framing the three quads:
 #   Quad A (Risograph) = thumb + index
-#   Quad B (Cyanotype) = index + middle
+#   Quad B (Negative)  = index + middle
 #   Quad C (Stippling) = middle + ring
 THUMB_INDEX  = 4
 INDEX_INDEX  = 8
@@ -33,9 +33,8 @@ LAG = 0.07          # Lag CHOP time constant in seconds (0.05-0.10)
 # --- Effect: Risograph (quad A) ---------------------------------------------------
 RISO_OFFSET_PX = 4.0     # misregistration offset between ink passes (2-6)
 
-# --- Effect: Cyanotype (quad B) ---------------------------------------------------
-CYANO_CONTRAST = 1.6     # tonal contrast (1.0 = none, higher = starker)
-CYANO_BLEED_PX = 2.0     # soft photochemical bleed radius, pixels
+# --- Effect: Negative (quad B) ----------------------------------------------------
+NEGATIVE_AMOUNT = 1.0    # color invert amount (0 = off, 1 = full photo negative)
 
 # --- Effect: Stippling (quad C) ---------------------------------------------------
 STIPPLE_CELL_PX = 14.0   # halftone dot cell size @1280x720 (coarser = bigger dots)

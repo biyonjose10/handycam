@@ -1,7 +1,7 @@
 # hands_to_chop.py — Script CHOP callbacks: parse the MediaPipe hands JSON DAT
 # into THREE finger-framed quads (24 channels):
 #   Quad A (cA0..cA3): both hands' THUMB  + INDEX  tips -> Risograph
-#   Quad B (cB0..cB3): both hands' INDEX  + MIDDLE tips -> Cyanotype
+#   Quad B (cB0..cB3): both hands' INDEX  + MIDDLE tips -> Negative
 #   Quad C (cC0..cC3): both hands' MIDDLE + RING   tips -> Stippling
 #
 # Each quad: 2 fingertips per hand = 4 points, ordered counter-clockwise around
