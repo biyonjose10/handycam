@@ -1,46 +1,59 @@
-# Discovering the plugin's hand-CHOP channel names
+# Finding the plugin's hands DAT and webcam TOP
 
-The torinmb `mediapipe-touchdesigner` plugin streams hand landmarks as CHOP
-channels, but the exact channel names are internal to the `.tox` and are **not
-publicly documented**. You discover them once, paste them into `config.py`, and
-never touch them again.
+Handycam reads hand landmarks from the torinmb `mediapipe-touchdesigner`
+plugin's **hands JSON DAT** (not a CHOP), and reuses the plugin's webcam frame.
+You confirm both paths once, paste them into `config.py`, and never touch them
+again. The defaults below match a stock `MediaPipe.tox` dropped at
+`/project1/MediaPipe`.
+
+## What the code expects
+
+```python
+# config.py
+HANDS_DAT_PATH    = '/project1/MediaPipe/hands'    # JSON DAT of landmarks
+WEBCAM_SELECT_TOP = '/project1/MediaPipe/video'    # plugin's webcam frame
+```
+
+`scripts/hands_to_chop.py` parses the DAT's JSON each frame. It reads
+`gestureResults.landmarks` — a list of up to two hands, each a list of 21
+landmark points with normalized `x`/`y` (origin **top-left**, y **down**).
+Fingertip landmark indices it uses: `4` = thumb, `8` = index, `12` = middle,
+`16` = ring.
 
 ## Steps
 
 1. Drag **`MediaPipe.tox`** into your project. When prompted, check
    **"Enable External .tox"** (keeps your `.toe` small).
 2. Select your webcam in the component, and **enable the Hands model**.
-3. Find the CHOP that carries the hand landmark stream (often named `hands`,
-   `hand_tracking`, or similar inside the component). Note its full path —
-   this is your `HANDS_CHOP_PATH`.
-4. Drop an **Info CHOP** or **Examine DAT** onto that CHOP (drag it out, then
-   set its operator parameter to the hands CHOP) to list every channel name.
-   Alternatively, middle-click the CHOP to see its channel list in the pop-up.
-5. Identify the four channels you need:
-   - **left hand, wrist (landmark 0), X** and **Y**
-   - **right hand, wrist (landmark 0), X** and **Y**
-   Landmark indices: `0` = wrist, `9` = middle-finger MCP (≈ palm center). The
-   spec uses the wrist; switch to `9` if you prefer the palm.
-6. Paste those four exact names into `config.py`:
-   ```python
-   SRC_LEFT_X  = '<paste here>'
-   SRC_LEFT_Y  = '<paste here>'
-   SRC_RIGHT_X = '<paste here>'
-   SRC_RIGHT_Y = '<paste here>'
-   ```
-7. Re-run `build_network.py`. The `sel_hands` Select CHOP renames them to the
-   stable names `hand_left_x/y`, `hand_right_x/y` that the rest of the network
-   (and the GLSL uniforms) depend on.
+3. Find the **DAT carrying the hand landmark JSON** inside the component
+   (typically named `hands`). Note its full path → this is `HANDS_DAT_PATH`.
+   Middle-click it to confirm the text is JSON containing a `landmarks` array.
+4. Find the **TOP carrying the webcam frame** the landmarks were computed on
+   (typically `video`). Note its full path → this is `WEBCAM_SELECT_TOP`.
+5. If your paths differ from the defaults, paste the real ones into `config.py`.
+6. Re-run `build_network.py`.
+
+## Sanity-checking the JSON shape
+
+If the quads don't track, middle-click the hands DAT and confirm the structure
+matches what `hands_to_chop.py` expects:
+
+```json
+{ "gestureResults": { "landmarks": [ [ {"x":0.5,"y":0.5,"z":0.0}, ... ], ... ] } }
+```
+
+The parser also accepts the `landmarks` array at the top level (it falls back to
+`data` if `gestureResults` is absent). If the plugin nests it differently, adjust
+the `gr = data.get('gestureResults', data)` / `gr.get('landmarks', [])` lines.
 
 ## Notes
 
-- If the plugin reports handedness from the camera's point of view, the user's
-  physical left hand may be labelled "Right" (and vice-versa). If the triangle
-  corners feel swapped, set `SWAP_HANDS = True` in `config.py`.
 - The plugin normalises coordinates to `0..1` with origin at the **top-left**
   (y increases downward). `FLIP_Y = True` converts this to TouchDesigner's UV
-  space (origin bottom-left). If your webcam is shown mirrored, also try
-  `MIRROR_X = True`.
-- Coordinate channels are usually named with a `tx`/`ty` (translate) or `x`/`y`
-  suffix per landmark — the placeholder names in `config.py` are guesses; the
-  discovery step above gives you the real ones.
+  space (origin bottom-left). If the webcam looks mirrored, also try
+  `MIRROR_X = True` — but note it flips x per-channel and does **not** reverse a
+  quad's winding.
+- A quad needs **both hands** (two fingertips each). With one hand or none, that
+  quad's `present` flag is 0 and it's hidden — this is expected behavior.
+- Run `scripts/plugin_hands_only.py` to switch off the face/pose/object detectors
+  if the plugin is also drawing those on the feed.

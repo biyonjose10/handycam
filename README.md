@@ -2,35 +2,39 @@
 
 A real-time webcam visual effect for **TouchDesigner 2023** (Python 3.11).
 
-MediaPipe tracks both hands. Each hand's wrist becomes a bottom corner of a
-dynamic triangle whose apex sits near top-center of the frame. **Inside** the
-triangle the webcam is rendered with a risograph / cyanotype + halftone-stippling
-aesthetic; **outside** the clean webcam shows through with a hard (un-feathered)
-edge. The triangle tracks your hands live.
+MediaPipe tracks both hands. Their fingertips frame **three overlapping
+quadrilaterals**, and each quad renders the webcam through a different print
+effect. Outside every quad the **clean webcam** shows through with a hard
+(un-feathered) edge. The quads track your hands live, and **disappear entirely**
+the moment a quad's hands aren't detected.
 
-```
-        apex (top-center)
-            /\
-           /  \        inside  = riso + halftone (blue/green/gold/white, paper grain)
-          /    \       outside = clean webcam
-         /      \
-   left hand   right hand   <- wrist positions, smoothed
-```
+| Quad | Framed by (both hands) | Effect |
+|---|---|---|
+| **A** | thumb + index tips | **Risograph** — vibrant misregistered ink passes |
+| **B** | index + middle tips | **Negative** — inverted webcam colors |
+| **C** | middle + ring tips | **Stippling** — bold red halftone dots on paper |
+
+Each quad needs **both hands** (two fingertips each = four corners). Raise both
+hands and spread your fingers to open the quads; lower a hand and the quads it
+fed vanish, leaving the clean webcam.
 
 ## What's in this repo
 
 | File | Purpose |
 |---|---|
 | `build_network.py` | Auto-builder — paste into TD's Textport to construct the whole network. |
-| `config.py` | All tunables: plugin paths, channel names, palette, halftone, smoothing. |
-| `shaders/riso.frag` | 4-band luminance posterize → ink palette → misregistration. |
-| `shaders/halftone.frag` | Ink-colored brick-grid halftone, luminance-driven dots, vertical density gradient. |
-| `shaders/triangle_composite.frag` | Point-in-triangle mask + paper grain + desaturation. |
-| `docs/channel_mapping.md` | One-time discovery of the plugin's hand-CHOP channel names. |
+| `config.py` | All tunables: plugin paths, fingertip landmarks, per-effect params, smoothing, coord flags. |
+| `scripts/hands_to_chop.py` | Script CHOP callbacks — parse the hands JSON DAT into 3 quads (24 corner channels + `presentA/B/C`). |
+| `scripts/plugin_hands_only.py` | Turns off every MediaPipe detector except Hands (declutters the feed, frees GPU). |
+| `shaders/riso_cmyk.frag` | Risograph: 3 misregistered subtractive ink passes (cyan / green / yellow). |
+| `shaders/negative.frag` | Photographic negative (`1 - rgb`), `NEGATIVE_AMOUNT` mixes original↔inverted. |
+| `shaders/stipple_red.frag` | Brick-grid red halftone, luminance-driven dot radius. |
+| `shaders/quad_composite.frag` | Point-in-quad cross-product mask + paper grain; `uActive` hides the quad when hands are gone. |
+| `docs/channel_mapping.md` | One-time discovery of the plugin's hands JSON DAT path and webcam TOP. |
 
 > **Note:** TouchDesigner `.toe` files are binary, so the project itself isn't
 > checked in as a file you can edit. Instead, `build_network.py` *generates* the
-> network programmatically. Run it once (or after any `config.py` change).
+> network programmatically. Run it once (or after any `config.py`/shader change).
 
 ## Prerequisites
 
@@ -43,47 +47,48 @@ edge. The triangle tracks your hands live.
 1. Open TouchDesigner. Drag **`MediaPipe.tox`** into your project; when prompted,
    check **"Enable External .tox"**.
 2. In the component, **select your webcam** and **enable the Hands model**.
-3. Follow **`docs/channel_mapping.md`** to find the hands CHOP path and the four
-   landmark channel names. Paste them into `config.py` (`HANDS_CHOP_PATH`,
-   `PLUGIN_VIDEO_TOP`, `SRC_LEFT_X/Y`, `SRC_RIGHT_X/Y`).
-4. Open the **Textport** (`Alt+T`) and run:
+3. Follow **`docs/channel_mapping.md`** to confirm the hands JSON DAT path and the
+   webcam TOP. Paste them into `config.py` (`HANDS_DAT_PATH`, `WEBCAM_SELECT_TOP`).
+4. *(Optional)* Run `scripts/plugin_hands_only.py` to disable the other detectors.
+5. Open the **Textport** (`Alt+T`) and run:
    ```python
    exec(open(r'C:/Users/biyon/handycam/build_network.py').read())
    ```
-5. The network builds under **`/handycam`**. View `/handycam/out1`.
+6. The network builds under **`/handycam`**. View `/handycam/out1`.
 
 ## Verifying it works
 
-- Background shows the **clean webcam**.
-- Raise both hands → a **sharp-edged triangle** appears, apex top-center, bottom
-  corners at your wrists.
-- Inside: posterized **blue / green / gold / white** ink bands with **ink-colored
-  halftone dots** (denser toward the bottom) and subtle **paper grain**.
-- Move your hands → the triangle updates **smoothly** (no jitter), with the
-  correct hand mapped to each corner and no vertical inversion.
+- With **no hands up**, the output is the **clean webcam** — no shapes at all.
+- Raise **both hands**, fingers spread → **three quads** appear: risograph inks
+  (thumb+index), color **negative** (index+middle), red **stipple** (middle+ring).
+- Move your hands → the quads track **smoothly** (no jitter).
+- Lower a hand → the quads it fed **disappear instantly**, back to clean webcam.
 
 ## Tuning (`config.py`, then re-run the builder)
 
 | Symptom / goal | Change |
 |---|---|
-| Triangle follows the wrong hand | `SWAP_HANDS = True` |
-| Triangle is vertically inverted | toggle `FLIP_Y` |
-| Mirrored / selfie webcam | `MIRROR_X = True` |
+| Quads mirrored left/right | `MIRROR_X = True` |
+| Quads vertically inverted | toggle `FLIP_Y` |
+| Mirrored / selfie webcam | `WEBCAM_FLIP_X = True` |
 | Too jittery / too laggy | `LAG` (0.05–0.10) |
-| Dots too big / small | `CELL_PX` (8–12) |
-| Stronger print misalignment | `MISREG_PX` (2–4) |
+| Risograph misalignment strength | `RISO_OFFSET_PX` (2–6) |
+| Negative intensity | `NEGATIVE_AMOUNT` (0 = off, 1 = full) |
+| Stipple dots too big / small | `STIPPLE_CELL_PX` (8–18) |
 | More/less analog feel | `GRAIN_OPACITY`, `DESATURATE` |
-| Apex follows hands | `APEX_MODE = 'midpoint'` |
+| Different finger pairs | `THUMB_INDEX` / `INDEX_INDEX` / `MIDDLE_INDEX` / `RING_INDEX` |
 
 ## Notes / known gotchas
 
 - **Webcam contention:** the plugin captures the camera internally. By default
-  (`USE_PLUGIN_PASSTHROUGH = True`) we reuse the plugin's passthrough frame so two
-  operators don't fight over the camera. Only set it `False` (own Video Device In
-  TOP) if the plugin doesn't expose a usable passthrough TOP.
-- **Misregistration:** done in `riso.frag` for speed. The spec's literal
-  "Transform TOP offset per layer" approach is an equivalent node-based
-  alternative if you'd rather build it from separate colorized layers.
+  (`WEBCAM_SOURCE = 'select'`) we reuse the plugin's `/project1/MediaPipe/video`
+  feed so two operators don't fight over the camera. Set it to `'videodevice'`
+  for an own Video Device In TOP only if the plugin doesn't expose a usable feed.
+- **A quad needs both hands.** `hands_to_chop.py` only marks a quad present when
+  it gets all four corners (two fingertips from each hand); otherwise that quad's
+  `uActive` flag goes to 0 and `quad_composite.frag` hides it.
+- **`MIRROR_X`** flips landmark x per-channel but does not reverse quad winding —
+  if a quad's fill looks wrong after mirroring, that's the place to look.
 - **Shader errors:** if a GLSL TOP turns red, right-click → view errors. The
   shaders target the TD GLSL-TOP convention (`out vec4 fragColor;`,
   `sTD2DInputs[]`, `vUV.st`, `uTD2DInfos[]`).
