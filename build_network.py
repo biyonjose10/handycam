@@ -216,6 +216,7 @@ def quad_layer(name, quad, x, background, effect, present_chan):
     set_vec(g, 4, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE, vz=0.0)
     # uActive: 1 only while both hands frame this quad -> hide it when hands vanish.
     set_vec(g, 5, 'uActive', ex="op('null_hands')['%s']" % present_chan)
+    set_vec(g, 6, 'uOutline', vx=C.OUTLINE_PX, vy=C.OUTLINE_OPACITY)
     connect(g, 0, background)   # shown outside the quad
     connect(g, 1, effect)       # effect shown inside the quad
     connect(g, 2, noise)        # paper grain

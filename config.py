@@ -44,6 +44,10 @@ STIPPLE_CELL_PX = 14.0   # halftone dot cell size @1280x720 (coarser = bigger do
 # --- Effect: Mosaic (quad D) ------------------------------------------------------
 MOSAIC_BLOCK_PX = 24.0   # pixel-block size @1280x720 (bigger = chunkier mosaic)
 
+# --- Quad outline (thin whitish border on every quad) -----------------------------
+OUTLINE_PX      = 2.5    # outline thickness in pixels (thin)
+OUTLINE_OPACITY = 0.35   # whitish line opacity (0 = off, 1 = solid white)
+
 # --- Paper / finish (applied inside every quad) -----------------------------------
 GRAIN_OPACITY = 0.08     # paper-grain overlay opacity
 DESATURATE    = 0.0      # keep 0 to preserve the vivid ink colors

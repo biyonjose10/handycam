@@ -79,6 +79,7 @@ fed vanish, leaving the clean webcam.
 | Negative intensity | `NEGATIVE_AMOUNT` (0 = off, 1 = full) |
 | Stipple dots too big / small | `STIPPLE_CELL_PX` (8–18) |
 | Mosaic blocks too big / small | `MOSAIC_BLOCK_PX` (12–40) |
+| Quad outline thickness / strength | `OUTLINE_PX` (1–4), `OUTLINE_OPACITY` (0–1) |
 | More/less analog feel | `GRAIN_OPACITY`, `DESATURATE` |
 | Different finger pairs | `THUMB_INDEX` / `INDEX_INDEX` / `MIDDLE_INDEX` / `RING_INDEX` / `PINKY_INDEX` |
 

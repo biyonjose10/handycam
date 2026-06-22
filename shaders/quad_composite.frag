@@ -7,10 +7,12 @@
 // around the polygon (the 4 fingertips: both hands' thumb + index). A cross-product
 // sign test decides inside/outside for a convex quad of EITHER winding. Hard edges.
 // Inside we add paper grain + slight desaturation; outside stays a clean webcam.
+// A thin whitish outline (uOutline) is drawn straddling the border when the quad is live.
 
 uniform vec2 uC0, uC1, uC2, uC3;
 uniform vec3 uGrain;     // x = grain opacity, y = desaturation, z = invert flag (>0.5)
 uniform vec2 uActive;    // x > 0.5 => quad live; otherwise hide it (clean webcam everywhere)
+uniform vec2 uOutline;   // x = outline thickness (px), y = whitish line opacity
 
 out vec4 fragColor;
 
@@ -18,6 +20,14 @@ float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
 float edge(vec2 p, vec2 a, vec2 b) {
     return (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
+}
+
+// Distance from point p to segment a-b (all in pixels).
+float segDist(vec2 p, vec2 a, vec2 b) {
+    vec2 pa = p - a;
+    vec2 ba = b - a;
+    float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+    return length(pa - ba * h);
 }
 
 bool inQuad(vec2 p) {
@@ -43,6 +53,19 @@ void main() {
         col = mix(col, vec3(luma(col)), clamp(uGrain.y, 0.0, 1.0));
     } else {
         col = raw;
+    }
+
+    // Thin whitish outline straddling the quad's border (only when live).
+    if (uActive.x > 0.5 && uOutline.y > 0.0) {
+        vec2 res = uTD2DInfos[0].res.zw;            // .zw = width,height in pixels
+        vec2 p   = uv * res;
+        float d = segDist(p, uC0 * res, uC1 * res);
+        d = min(d, segDist(p, uC1 * res, uC2 * res));
+        d = min(d, segDist(p, uC2 * res, uC3 * res));
+        d = min(d, segDist(p, uC3 * res, uC0 * res));
+        float hw   = max(0.5, uOutline.x * 0.5);    // half-thickness
+        float line = 1.0 - smoothstep(hw - 1.0, hw + 1.0, d);
+        col = mix(col, vec3(1.0), line * clamp(uOutline.y, 0.0, 1.0));
     }
 
     fragColor = vec4(col, 1.0);

@@ -64,7 +64,7 @@ clean webcam comes from a Select TOP on the plugin's video feed.
 ## Key conventions / gotchas
 
 - Shaders use TD GLSL-TOP convention: `out vec4 fragColor;`, `sTD2DInputs[]`, `vUV.st`, `uTD2DInfos[].res` (`.zw`=w,h `.xy`=1/w,1/h).
-- Custom uniforms set via GLSL TOP **Vectors** page params: `vecNname`, `vecNvaluex/y/z/w` (0-indexed). In `quad_composite`: uC0–3 = slots 0–3, uGrain = 4, uActive = 5.
+- Custom uniforms set via GLSL TOP **Vectors** page params: `vecNname`, `vecNvaluex/y/z/w` (0-indexed). In `quad_composite`: uC0–3 = slots 0–3, uGrain = 4, uActive = 5, uOutline = 6 (x = thickness px, y = whitish opacity).
 - Each quad's 4 corners = both hands' two fingertips, ordered CCW around their centroid (`_ordered` in `hands_to_chop.py`) for a clean convex polygon.
 - **Presence gating:** a quad is only shown when both hands supply its 4 corners. `hands_to_chop.py` emits `presentA/B/C/D`; `quad_composite.frag` gates its inside branch on the `uActive` uniform. `uGrain.z` is a now-dead invert flag and the fallback slot for `uActive` if a TD build lacks vec5.
 - Coordinate space: MediaPipe is top-left origin / y-down; TD UV is bottom-left / y-up. `FLIP_Y` and `MIRROR_X` in `config.py` reconcile this, baked into the GLSL uniform expressions (not a Math CHOP). `MIRROR_X` does NOT reverse quad winding — untested edge.
