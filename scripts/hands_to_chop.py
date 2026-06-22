@@ -76,11 +76,16 @@ def onCook(scriptOp):
         debug('hands_to_chop parse error:', e)
 
     out = {q: _finalize(acc[q], prev[q]) for q in QUADS}
+    # A quad is "present" only when both hands contributed its two fingertips
+    # (4 points). Fewer points (one hand / no hands) -> hide the quad entirely.
+    present = {q: (1.0 if len(acc[q]) >= 4 else 0.0) for q in QUADS}
     scriptOp.store('prev', out)
 
     flat = [v for q in QUADS for p in out[q] for v in p]
     for name, val in zip(NAMES, flat):
         scriptOp.appendChan(name).vals = [val]
+    for q in QUADS:
+        scriptOp.appendChan('present' + q).vals = [present[q]]
     return
 
 

@@ -200,20 +200,22 @@ setp(noise, resolutionw=C.RESOLUTION[0], resolutionh=C.RESOLUTION[1],
 
 
 # --- quad compositors: A (riso) -> B (negative) -> C (stipple), stacked ------------
-def quad_layer(name, quad, x, background, effect):
+def quad_layer(name, quad, x, background, effect, present_chan):
     g = make_glsl(name, 'quad_composite.frag', x, -300)
     for idx, c in enumerate(quad):          # uC0..uC3 in vec slots 0..3
         ex, ey = corner_xy[c]
         set_vec(g, idx, 'uC%d' % idx, ex=ex, ey=ey)
     set_vec(g, 4, 'uGrain', vx=C.GRAIN_OPACITY, vy=C.DESATURATE, vz=0.0)
+    # uActive: 1 only while both hands frame this quad -> hide it when hands vanish.
+    set_vec(g, 5, 'uActive', ex="op('null_hands')['%s']" % present_chan)
     connect(g, 0, background)   # shown outside the quad
     connect(g, 1, effect)       # effect shown inside the quad
     connect(g, 2, noise)        # paper grain
     return g
 
-quad_a = quad_layer('quad_a', QUAD_A, 120, webcam, riso)
-quad_b = quad_layer('quad_b', QUAD_B, 320, quad_a, negative)
-quad_c = quad_layer('quad_c', QUAD_C, 520, quad_b, stipple)
+quad_a = quad_layer('quad_a', QUAD_A, 120, webcam, riso, 'presentA')
+quad_b = quad_layer('quad_b', QUAD_B, 320, quad_a, negative, 'presentB')
+quad_c = quad_layer('quad_c', QUAD_C, 520, quad_b, stipple, 'presentC')
 
 
 # --- output -----------------------------------------------------------------------

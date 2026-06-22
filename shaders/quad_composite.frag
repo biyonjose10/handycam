@@ -10,6 +10,7 @@
 
 uniform vec2 uC0, uC1, uC2, uC3;
 uniform vec3 uGrain;     // x = grain opacity, y = desaturation, z = invert flag (>0.5)
+uniform vec2 uActive;    // x > 0.5 => quad live; otherwise hide it (clean webcam everywhere)
 
 out vec4 fragColor;
 
@@ -36,7 +37,7 @@ void main() {
     vec3 grain = texture(sTD2DInputs[2], uv).rgb;
 
     vec3 col;
-    if (inQuad(uv)) {
+    if (uActive.x > 0.5 && inQuad(uv)) {
         col = (uGrain.z > 0.5) ? (vec3(1.0) - fx) : fx;   // inverse layer = negative colors
         col = mix(col, col * grain, clamp(uGrain.x, 0.0, 1.0));
         col = mix(col, vec3(luma(col)), clamp(uGrain.y, 0.0, 1.0));
