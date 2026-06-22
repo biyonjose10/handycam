@@ -18,7 +18,7 @@ WEBCAM_SELECT_TOP = '/project1/MediaPipe/video'    # plugin's webcam frame
 `gestureResults.landmarks` — a list of up to two hands, each a list of 21
 landmark points with normalized `x`/`y` (origin **top-left**, y **down**).
 Fingertip landmark indices it uses: `4` = thumb, `8` = index, `12` = middle,
-`16` = ring.
+`16` = ring, `20` = pinky.
 
 ## Steps
 

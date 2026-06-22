@@ -5,10 +5,11 @@ Run this INSIDE TouchDesigner's Textport (Alt+T):
 
     exec(open(r'C:/Users/biyon/handycam/build_network.py').read())
 
-It (re)creates /handycam: CHOP chain -> webcam source -> three print-effect GLSL
-TOPs (Risograph / Negative / Stippling) -> three stacked quad compositors -> Out.
-Three finger-framed quads: A = thumb+index (Riso), B = index+middle (Negative),
-C = middle+ring (Stipple). Idempotent: rebuilds /handycam each run.
+It (re)creates /handycam: CHOP chain -> webcam source -> four print-effect GLSL
+TOPs (Risograph / Negative / Stippling / Mosaic) -> four stacked quad compositors
+-> Out. Four finger-framed quads: A = thumb+index (Riso), B = index+middle
+(Negative), C = middle+ring (Stipple), D = ring+pinky (Mosaic). Idempotent:
+rebuilds /handycam each run.
 
 Prereqs:
   1. The torinmb MediaPipe.tox is in the project, webcam selected, Hands enabled.
@@ -120,6 +121,7 @@ parser = parser.replace('__THUMB_INDEX__', str(C.THUMB_INDEX))
 parser = parser.replace('__INDEX_INDEX__', str(C.INDEX_INDEX))
 parser = parser.replace('__MIDDLE_INDEX__', str(C.MIDDLE_INDEX))
 parser = parser.replace('__RING_INDEX__', str(C.RING_INDEX))
+parser = parser.replace('__PINKY_INDEX__', str(C.PINKY_INDEX))
 cb.text = parser
 
 # Per-frame cook trigger: a Script CHOP with no live input cooks once and stops.
@@ -155,11 +157,13 @@ def y_expr(name):
     return f"(1-{chan(name)})" if C.FLIP_Y else chan(name)
 
 
-# Quad corner UV expressions (FLIP_Y / MIRROR_X applied per channel), for all 3 quads.
+# Quad corner UV expressions (FLIP_Y / MIRROR_X applied per channel), for all 4 quads.
 QUAD_A = ['cA0', 'cA1', 'cA2', 'cA3']   # thumb + index   -> Risograph
 QUAD_B = ['cB0', 'cB1', 'cB2', 'cB3']   # index + middle  -> Negative
 QUAD_C = ['cC0', 'cC1', 'cC2', 'cC3']   # middle + ring   -> Stippling
-corner_xy = {c: (x_expr(c + 'x'), y_expr(c + 'y')) for c in QUAD_A + QUAD_B + QUAD_C}
+QUAD_D = ['cD0', 'cD1', 'cD2', 'cD3']   # ring + pinky    -> Mosaic
+corner_xy = {c: (x_expr(c + 'x'), y_expr(c + 'y'))
+             for c in QUAD_A + QUAD_B + QUAD_C + QUAD_D}
 
 
 # --- webcam source ----------------------------------------------------------------
@@ -179,7 +183,7 @@ else:
     webcam = cam
 
 
-# --- three print effects (each from the clean webcam) -----------------------------
+# --- four print effects (each from the clean webcam) ------------------------------
 riso = make_glsl('riso_cmyk', 'riso_cmyk.frag', -360, -300)
 set_vec(riso, 0, 'uOffsetPx', vx=C.RISO_OFFSET_PX, vy=C.RISO_OFFSET_PX)
 connect(riso, 0, webcam)
@@ -192,6 +196,10 @@ stipple = make_glsl('stipple', 'stipple_red.frag', -360, 60)
 set_vec(stipple, 0, 'uCell', vx=C.STIPPLE_CELL_PX, vy=C.STIPPLE_CELL_PX)
 connect(stipple, 0, webcam)
 
+mosaic = make_glsl('mosaic', 'mosaic.frag', -360, 240)
+set_vec(mosaic, 0, 'uBlock', vx=C.MOSAIC_BLOCK_PX, vy=C.MOSAIC_BLOCK_PX)
+connect(mosaic, 0, webcam)
+
 
 # --- paper grain ------------------------------------------------------------------
 noise = make(td.noiseTOP, 'paper_grain', -360, -480)
@@ -199,7 +207,7 @@ setp(noise, resolutionw=C.RESOLUTION[0], resolutionh=C.RESOLUTION[1],
      mono=1, period=20.0)
 
 
-# --- quad compositors: A (riso) -> B (negative) -> C (stipple), stacked ------------
+# --- quad compositors: A (riso) -> B (negative) -> C (stipple) -> D (mosaic) -------
 def quad_layer(name, quad, x, background, effect, present_chan):
     g = make_glsl(name, 'quad_composite.frag', x, -300)
     for idx, c in enumerate(quad):          # uC0..uC3 in vec slots 0..3
@@ -216,18 +224,19 @@ def quad_layer(name, quad, x, background, effect, present_chan):
 quad_a = quad_layer('quad_a', QUAD_A, 120, webcam, riso, 'presentA')
 quad_b = quad_layer('quad_b', QUAD_B, 320, quad_a, negative, 'presentB')
 quad_c = quad_layer('quad_c', QUAD_C, 520, quad_b, stipple, 'presentC')
+quad_d = quad_layer('quad_d', QUAD_D, 720, quad_c, mosaic, 'presentD')
 
 
 # --- output -----------------------------------------------------------------------
-out = make(td.outTOP, 'out1', 720, -300)
-connect(out, 0, quad_c)
+out = make(td.outTOP, 'out1', 920, -300)
+connect(out, 0, quad_d)
 out.viewer = True
 
 print(f"Done. Output: {out.path}")
 print("Reminders:")
 print("  * Quads: thumb+index = Risograph, index+middle = Negative,")
-print("    middle+ring = Stippling. Frame each with both hands.")
+print("    middle+ring = Stippling, ring+pinky = Mosaic. Frame each with both hands.")
 print("  * Toggle MIRROR_X / FLIP_Y in config.py if the quads are mirrored/inverted.")
-print("  * Tune RISO_/NEGATIVE_/STIPPLE_ values in config.py, then re-run this script.")
+print("  * Tune RISO_/NEGATIVE_/STIPPLE_/MOSAIC_ values in config.py, then re-run.")
 print("  * Check each GLSL TOP's node for compile errors (red); right-click >")
 print("    'View Errors' if a shader fails to compile.")
