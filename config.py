@@ -3,22 +3,20 @@ Handycam configuration.
 
 Edit these values, then re-run build_network.py inside TouchDesigner's Textport.
 Hand data comes from the torinmb MediaPipe plugin as a JSON DAT, which a Script CHOP
-parses into four finger-framed quads (see scripts/hands_to_chop.py).
+parses into three finger-framed quads (see scripts/hands_to_chop.py).
 """
 
 # --- Plugin hookup ----------------------------------------------------------------
 HANDS_DAT_PATH = '/project1/MediaPipe/hands'
 
-# Fingertip landmarks framing the four quads:
+# Fingertip landmarks framing the three quads:
 #   Quad A (Risograph) = thumb + index
 #   Quad B (Negative)  = index + middle
 #   Quad C (Stippling) = middle + ring
-#   Quad D (Mosaic)    = ring + pinky
 THUMB_INDEX  = 4
 INDEX_INDEX  = 8
 MIDDLE_INDEX = 12
 RING_INDEX   = 16
-PINKY_INDEX  = 20
 
 # --- Webcam source ----------------------------------------------------------------
 WEBCAM_SOURCE      = 'select'                     # reuse the plugin's feed (no camera contention)
@@ -40,9 +38,6 @@ NEGATIVE_AMOUNT = 1.0    # color invert amount (0 = off, 1 = full photo negative
 
 # --- Effect: Stippling (quad C) ---------------------------------------------------
 STIPPLE_CELL_PX = 14.0   # halftone dot cell size @1280x720 (coarser = bigger dots)
-
-# --- Effect: Mosaic (quad D) ------------------------------------------------------
-MOSAIC_BLOCK_PX = 24.0   # pixel-block size @1280x720 (bigger = chunkier mosaic)
 
 # --- Quad outline (thin whitish border on every quad) -----------------------------
 OUTLINE_PX      = 2.5    # outline thickness in pixels (thin)

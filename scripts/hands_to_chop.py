@@ -1,9 +1,8 @@
 # hands_to_chop.py — Script CHOP callbacks: parse the MediaPipe hands JSON DAT
-# into FOUR finger-framed quads (32 channels):
+# into THREE finger-framed quads (24 channels):
 #   Quad A (cA0..cA3): both hands' THUMB  + INDEX  tips -> Risograph
 #   Quad B (cB0..cB3): both hands' INDEX  + MIDDLE tips -> Negative
 #   Quad C (cC0..cC3): both hands' MIDDLE + RING   tips -> Stippling
-#   Quad D (cD0..cD3): both hands' RING   + PINKY  tips -> Mosaic
 #
 # Each quad: 2 fingertips per hand = 4 points, ordered counter-clockwise around
 # their centroid so the point-in-quad test always sees a clean convex polygon.
@@ -11,7 +10,7 @@
 # Loaded by build_network.py into the script_hands CHOP's "Callbacks DAT".
 # Placeholders are substituted at build time from config.py.
 # Coords normalized 0..1, origin TOP-LEFT, y DOWN.
-# LM 4=thumb, 8=index, 12=middle, 16=ring, 20=pinky (fingertips).
+# LM 4=thumb, 8=index, 12=middle, 16=ring (fingertips).
 
 import json
 import math
@@ -21,16 +20,14 @@ THUMB = __THUMB_INDEX__
 INDEX = __INDEX_INDEX__
 MIDDLE = __MIDDLE_INDEX__
 RING = __RING_INDEX__
-PINKY = __PINKY_INDEX__
 
 # (lo finger, hi finger) per quad, and a default centered quad for each.
-QUADS = ('A', 'B', 'C', 'D')
-PAIRS = {'A': (THUMB, INDEX), 'B': (INDEX, MIDDLE), 'C': (MIDDLE, RING), 'D': (RING, PINKY)}
+QUADS = ('A', 'B', 'C')
+PAIRS = {'A': (THUMB, INDEX), 'B': (INDEX, MIDDLE), 'C': (MIDDLE, RING)}
 DEFAULTS = {
     'A': [(0.24, 0.42), (0.50, 0.42), (0.50, 0.62), (0.24, 0.62)],
     'B': [(0.38, 0.30), (0.64, 0.30), (0.64, 0.50), (0.38, 0.50)],
     'C': [(0.52, 0.42), (0.78, 0.42), (0.78, 0.62), (0.52, 0.62)],
-    'D': [(0.66, 0.50), (0.92, 0.50), (0.92, 0.70), (0.66, 0.70)],
 }
 NAMES = tuple('c%s%d%s' % (q, i, ax) for q in QUADS for i in range(4) for ax in ('x', 'y'))
 

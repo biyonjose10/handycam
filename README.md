@@ -2,7 +2,7 @@
 
 A real-time webcam visual effect for **TouchDesigner 2023** (Python 3.11).
 
-MediaPipe tracks both hands. Their fingertips frame **four overlapping
+MediaPipe tracks both hands. Their fingertips frame **three overlapping
 quadrilaterals**, and each quad renders the webcam through a different print
 effect. Outside every quad the **clean webcam** shows through with a hard
 (un-feathered) edge. The quads track your hands live, and **disappear entirely**
@@ -13,7 +13,6 @@ the moment a quad's hands aren't detected.
 | **A** | thumb + index tips | **Risograph** — vibrant misregistered ink passes |
 | **B** | index + middle tips | **Negative** — inverted webcam colors |
 | **C** | middle + ring tips | **Stippling** — bold red halftone dots on paper |
-| **D** | ring + pinky tips | **Mosaic** — chunky pixel-block quantization |
 
 Each quad needs **both hands** (two fingertips each = four corners). Raise both
 hands and spread your fingers to open the quads; lower a hand and the quads it
@@ -25,12 +24,11 @@ fed vanish, leaving the clean webcam.
 |---|---|
 | `build_network.py` | Auto-builder — paste into TD's Textport to construct the whole network. |
 | `config.py` | All tunables: plugin paths, fingertip landmarks, per-effect params, smoothing, coord flags. |
-| `scripts/hands_to_chop.py` | Script CHOP callbacks — parse the hands JSON DAT into 4 quads (32 corner channels + `presentA/B/C/D`). |
+| `scripts/hands_to_chop.py` | Script CHOP callbacks — parse the hands JSON DAT into 3 quads (24 corner channels + `presentA/B/C`). |
 | `scripts/plugin_hands_only.py` | Turns off every MediaPipe detector except Hands (declutters the feed, frees GPU). |
 | `shaders/riso_cmyk.frag` | Risograph: 3 misregistered subtractive ink passes (cyan / green / yellow). |
 | `shaders/negative.frag` | Photographic negative (`1 - rgb`), `NEGATIVE_AMOUNT` mixes original↔inverted. |
 | `shaders/stipple_red.frag` | Brick-grid red halftone, luminance-driven dot radius. |
-| `shaders/mosaic.frag` | Pixel mosaic — quantize the webcam into NxN blocks. |
 | `shaders/quad_composite.frag` | Point-in-quad cross-product mask + paper grain; `uActive` hides the quad when hands are gone. |
 | `docs/channel_mapping.md` | One-time discovery of the plugin's hands JSON DAT path and webcam TOP. |
 
@@ -61,9 +59,8 @@ fed vanish, leaving the clean webcam.
 ## Verifying it works
 
 - With **no hands up**, the output is the **clean webcam** — no shapes at all.
-- Raise **both hands**, fingers spread → **four quads** appear: risograph inks
-  (thumb+index), color **negative** (index+middle), red **stipple** (middle+ring),
-  pixel **mosaic** (ring+pinky).
+- Raise **both hands**, fingers spread → **three quads** appear: risograph inks
+  (thumb+index), color **negative** (index+middle), red **stipple** (middle+ring).
 - Move your hands → the quads track **smoothly** (no jitter).
 - Lower a hand → the quads it fed **disappear instantly**, back to clean webcam.
 
@@ -78,10 +75,9 @@ fed vanish, leaving the clean webcam.
 | Risograph misalignment strength | `RISO_OFFSET_PX` (2–6) |
 | Negative intensity | `NEGATIVE_AMOUNT` (0 = off, 1 = full) |
 | Stipple dots too big / small | `STIPPLE_CELL_PX` (8–18) |
-| Mosaic blocks too big / small | `MOSAIC_BLOCK_PX` (12–40) |
 | Quad outline thickness / strength | `OUTLINE_PX` (1–4), `OUTLINE_OPACITY` (0–1) |
 | More/less analog feel | `GRAIN_OPACITY`, `DESATURATE` |
-| Different finger pairs | `THUMB_INDEX` / `INDEX_INDEX` / `MIDDLE_INDEX` / `RING_INDEX` / `PINKY_INDEX` |
+| Different finger pairs | `THUMB_INDEX` / `INDEX_INDEX` / `MIDDLE_INDEX` / `RING_INDEX` |
 
 ## Notes / known gotchas
 
